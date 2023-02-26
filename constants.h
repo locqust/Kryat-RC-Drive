@@ -59,8 +59,8 @@ uint8_t dome_mac[] = {0xBC,0xFF,0x4D,0x19,0xF8,0x9F}; //Dome ESP Mac address
 /*****************************************************************************/
 
 //#define ENABLE_WIFI
-const char* ssid = "kryat-rc";
-const char* password = "12345678";
+const char* ssid = "your-SSID";
+const char* password = "your pass";
 
 /*****************************************************************************/
 // Audio
