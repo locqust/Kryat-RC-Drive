@@ -16,8 +16,8 @@
 #define REAR_LOGIC_2 5
 
 
-const char* ssid = "Ares";
-const char* password = "cp98xpyd30";
+const char* ssid = "Your SSID";
+const char* password = "Your pass";
 
 
 struct dome_message {
