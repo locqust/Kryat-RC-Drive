@@ -5,16 +5,18 @@
 #include <Adafruit_NeoPixel.h>
 
 #define LED_PIN D4
-#define LED_COUNT 6
+#define LED_COUNT 9
 #define BRIGHTNESS 50
 
-#define LED_HP 0
-#define LED_PSI 1
-#define FRONT_LOGIC_1 2
-#define FRONT_LOGIC_2 3
-#define REAR_LOGIC_1 4
-#define REAR_LOGIC_2 5
-
+#define MAIN_EYE 0
+#define LED_HP 1
+#define LED_PSI 2
+#define FRONT_LOGIC_1 3
+#define FRONT_LOGIC_2 4
+#define FRONT_LOGIC_3 5
+#define FRONT_LOGIC_4 6
+#define REAR_LOGIC_1 7
+#define REAR_LOGIC_2 8
 
 const char* ssid = "your SSID";
 const char* password = "your pass";
@@ -78,10 +80,15 @@ void setup() {
   // Front Logic
   pixels.setPixelColor(FRONT_LOGIC_1, pixels.Color(255, 255, 255));
   pixels.setPixelColor(FRONT_LOGIC_2, pixels.Color(255, 255, 255));
+  pixels.setPixelColor(FRONT_LOGIC_3, pixels.Color(255, 255, 255));
+  pixels.setPixelColor(FRONT_LOGIC_4, pixels.Color(255, 255, 255));
 
-  // Read Logic
+  // Rear Logic
   pixels.setPixelColor(REAR_LOGIC_1, pixels.Color(0, 0, 255));
   pixels.setPixelColor(REAR_LOGIC_2, pixels.Color(0, 0, 255));
+
+  // Main Eye
+  pixels.setPixelColor(MAIN_EYE, pixels.Color(255, 0, 0));
 
   pixels.show();
 }
