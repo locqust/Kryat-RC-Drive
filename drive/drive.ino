@@ -1,14 +1,16 @@
 /**
-   FrSky SBUs RC control board for Hamster drive BB8
+   Kryat Drive
+   OpenSource FrSky SBUs RC control board for Astromechs
    Authors:
       Patrick Ryan <pat.m.ryan@gmail.com> - @circuitBurn
       Darren Poulson <darren.poulson@gmail.com> - Fediverse: dpoulson@fr.droidbuilders.uk
       Andrew Smith <locqust@gmail.com> 
     This is a heavily modified version of the Joe's drive FrSky SBUS RC control made by Darren, stripped 
-    down for a Hamster drive (which I call Kryat)
+    down and rebuilt for your average 3 legged Astromech.
     I've also taken advantage of the fact I have a Kyber 15 button board on my TX so I have written the code to utliise that in a similar way to Kyber.
-    I have also lifted the Automation code from Padawan 360, though I currently have no idea how to tell the dome to rotate in a simialr way without 
-    breaking the TX ability to control the dome servo too. 
+    This also takes ideas and parts of Padawan 360, originally made by Dan Kraus and customised by Steve Baudains of Imperial Light and Magic. I.e Meastro control, 
+    I2C, Dome and sound automation etc. As well as other add-ons that I made to my own Padawan 360 for R2-D2. 
+    Effectively I'm trying to get the best of both worlds of RC and Padawan while keeping it simple and open to others to play around with.
 
    Serial Ports:
       Serial1 - DFPlayer Mini
@@ -19,6 +21,7 @@
       https://github.com/dpoulson/bb8_rc_control
       https://bb8builders.club/
       https://www.facebook.com/groups/863379917081398
+      https://github.com/Imperiallandm/padawan_360_mega_maestro
 */
 
 
@@ -67,6 +70,7 @@ void setup() {
   randomSeed(analogRead(0));
 
   pinMode(AUDIO_OUTPUT_PIN, INPUT);
+  pinMode(AUDIO_BUSY_PIN, INPUT);
 
 
     WiFi.mode(WIFI_STA);  // Needed for ESPNow
@@ -176,38 +180,33 @@ void loop() {
         triggerAutomation();
         }
   }
-  if ((millis() - soundMillis) > 25)
 
-    {
-      int soundLevel = analogRead(AUDIO_OUTPUT_PIN);
-      //int soundLevel =1;
-      //Serial.println(soundLevel);
-      if (soundLevel > 1600)
-      {
-        currentDomeMessage.psi = 1;
-        Serial.println("PSI1 more 1600");        
-      }
-      else if (soundLevel < 1600)
-      {
-        currentDomeMessage.psi = 0;
-        Serial.println("PSI0 less 1600"); 
-      }
-      else
-      {
-        currentDomeMessage.psi = 0;
-        Serial.println("PSI0"); 
-      }
-      send_dome_message();
-    } else {
-      if (currentDomeMessage.psi == 1)
-      {
-        currentDomeMessage.psi = 0;
-        send_dome_message();
-        Serial.println("send message"); 
-      }
-     
-    } 
-    soundMillis = millis();
+if ((millis() - soundMillis) > 25)     
+{    
+  if (digitalRead(AUDIO_BUSY_PIN) == LOW)
+	{   //Check to see if audio is playing
+       int soundLevel = analogRead(AUDIO_OUTPUT_PIN);
+	  Serial.println(soundLevel);
+	  if (soundLevel > 3600)
+	    {
+	     currentDomeMessage.psi = 1;
+	     //Serial.println("PSI High"); 
+	    }
+	  else if (soundLevel < 3600)
+	    {
+	     currentDomeMessage.psi = 0;
+	     //Serial.println("PSI Low"); 
+	    }
+	}
+	else if (digitalRead(AUDIO_BUSY_PIN) == HIGH)
+	   {
+	    currentDomeMessage.psi = 0; 
+	    Serial.println("PSI off"); 
+	   }    
+        
+  send_dome_message();
+soundMillis = millis();
+  }   
 
   // //hub.handle();
 

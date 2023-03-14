@@ -67,6 +67,6 @@ const char* password = "your pass";
 /*****************************************************************************/
 #define AUDIO_ENABLED 1
 #define AUDIO_OUTPUT_PIN 36
-//#define AUDIO_BUSY_PIN 39
+#define AUDIO_BUSY_PIN 35
 #define Vol 30
 
