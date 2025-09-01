@@ -1,37 +1,38 @@
-//How much the dome may turn during automation.
-int turnDirection = RC_MID;
-byte dometurn = 0;
-byte automateDelay = random(5,20);// set this to min and max seconds between sounds
 unsigned long automateMillis = 0;
 
+void triggerAutomation() {
+    // Only proceed if a delay range is set
+    if (config.automation.delayMax <= 0) return;
 
-void triggerAutomation()
-{
-  // Plays random sounds or dome movements for automations when in automation mode
-    unsigned long currentMillis = millis();
+    // Check if it's time to trigger a new action
+    if (millis() > automateMillis) {
+        
+        // 1. Trigger a random sound, if configured
+        if (config.automation.soundMin > 0 && config.automation.soundMax >= config.automation.soundMin) {
+            int soundToPlay = random(config.automation.soundMin, config.automation.soundMax + 1);
+            myDFPlayer.play(soundToPlay);
+            Serial.print("Automation played sound: ");
+            Serial.println(soundToPlay);
+        }
 
-    if (currentMillis - automateMillis > (automateDelay * 1000)) {
-      automateMillis = millis();
-      automateAction = random(1, 5);
-
-      if (automateAction < 4) {
-        myDFPlayer.play(random(1, 35));
-        //Dome lights
-      // triggerI2C (14,random(100, 110)); 
-      }
-      if (automateAction = 5) {
-        // sbus_tx.data().ch[CH_Dome_servo]= turnDirection;
-        // sbus_tx.Write();
-
-        // delay(750);
-
-        // if(turnDirection > RC_MID){
-        //   turnDirection = RC_MIN;
-        // } else {
-        //   turnDirection = RC_MAX;
-      //  }
-      }
-      // sets the mix, max seconds between automation actions - sounds and dome movement
-      automateDelay = random(5,15);
+        // 2. Trigger a random Maestro script, if configured
+        if (config._maestroCount > 0 && config.automation.maestroMin > 0 && config.automation.maestroMax >= config.automation.maestroMin) {
+            int scriptToRun = random(config.automation.maestroMin, config.automation.maestroMax + 1);
+            
+            // Randomly pick which Maestro to run it on if both are enabled
+            int maestroTarget = 0;
+            if (config._maestroCount == 2) {
+                maestroTarget = random(0, 2); // Result is 0 or 1
+            }
+            runMaestroScript(maestroTarget, scriptToRun);
+        }
+        
+        // 3. Set the timer for the next action
+        int delaySeconds = random(config.automation.delayMin, config.automation.delayMax + 1);
+        automateMillis = millis() + (delaySeconds * 1000);
+        Serial.print("Next automation action in: ");
+        Serial.print(delaySeconds);
+        Serial.println(" seconds.");
     }
 }
+

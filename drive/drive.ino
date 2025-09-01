@@ -1,221 +1,205 @@
 /**
-   Kryat Drive
+   Krayt Drive
    OpenSource FrSky SBUs RC control board for Astromechs
-   Authors:
-      Patrick Ryan <pat.m.ryan@gmail.com> - @circuitBurn
-      Darren Poulson <darren.poulson@gmail.com> - Fediverse: dpoulson@fr.droidbuilders.uk
-      Andrew Smith <locqust@gmail.com> 
-    This is a heavily modified version of the Joe's drive FrSky SBUS RC control made by Darren, stripped 
-    down and rebuilt for your average 3 legged Astromech.
-    I've also taken advantage of the fact I have a Kyber 15 button board on my TX so I have written the code to utliise that in a similar way to Kyber.
-    This also takes ideas and parts of Padawan 360, originally made by Dan Kraus and customised by Steve Baudains of Imperial Light and Magic. I.e Meastro control, 
-    I2C, Dome and sound automation etc. As well as other add-ons that I made to my own Padawan 360 for R2-D2. 
-    Effectively I'm trying to get the best of both worlds of RC and Padawan while keeping it simple and open to others to play around with.
-
-   Serial Ports:
-      Serial1 - DFPlayer Mini
-      Serial2 - SBUS RC
-
-   Resources:
-      https://github.com/circuitBurn/BB-8
-      https://github.com/dpoulson/bb8_rc_control
-      https://bb8builders.club/
-      https://www.facebook.com/groups/863379917081398
-      https://github.com/Imperiallandm/padawan_360_mega_maestro
+   This is a collaborative project developed with Google's Gemini.
 */
-
-
 #include "sbus.h"
-#include "Arduino.h"
-#include <esp_now.h>
-#include <Wire.h>
-#include "DFRobotDFPlayerMini.h"
+#include <DFRobotDFPlayerMini.h>
 #include <HardwareSerial.h>
-
 #include <WiFi.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
-
-#include "enums.h"
+#include <esp_now.h>
+#include "config.h"
 #include "constants.h"
-#include <EEPROM.h>
+#include "enums.h"
+
+// --- Function Prototypes ---
+// from filesystem.ino
+void loadConfiguration();
+void saveConfiguration();
+// from webserver.ino
+void setupWebServer();
+// from sound.ino
+void check_sound();
+void toggle_pad();
+// from automation.ino
+void triggerAutomation();
+// from maestro.ino
+void setupMaestro();
+void stopAllMaestros();
+// from imu.ino
+void setupIMU();
+void readIMU();
+// from functions.ino
+void send_dome_message();
 
 
-
-
-/* SBUS object, reading SBUS */
-bfs::SbusRx sbus_rx(&Serial2, 16, 16, false);
-bfs::SbusData data;
-//bfs::SbusTx sbus_tx(&Serial2, 16, 16, false);
-
-
+// --- DFPlayer Mini ---
+HardwareSerial DFPlayerSerial(1);
 DFRobotDFPlayerMini myDFPlayer;
-unsigned long lastMillis, soundMillis;
 
-struct dome_message currentDomeMessage;
-esp_now_peer_info_t peerDome;
-int chan;
+// --- SBUS RC Control ---
+// SBUS connected to GPIO 16 (RX2)
+bfs::SbusRx sbus_rx(&Serial2);
+bfs::SbusData data;
 
-byte automateAction = 0;
-boolean isInAutomationMode = false;
+// --- Global State ---
+bool isInAutomationMode = false;
+bool automationToggleState = false;
+bool wifiToggleState = false;
+bool wifiEnabled = true;
 
+// --- ESP-Now ---
+dome_message currentDomeMessage;
+esp_now_peer_info_t peerInfo;
+
+// --- Timers ---
+unsigned long soundMillis = 0;
+unsigned long wifiReconnectMillis = 0;
 
 
 void setup() {
- sbus_rx.Begin();
-  delay(2000);
-
   Serial.begin(115200);
-  randomSeed(analogRead(0));
+  Serial.println("Booting Krayt Drive...");
 
-  pinMode(AUDIO_OUTPUT_PIN, INPUT);
   pinMode(AUDIO_BUSY_PIN, INPUT);
+  pinMode(AUDIO_OUTPUT_PIN, INPUT);
 
+  // Load configuration from SPIFFS
+  loadConfiguration();
 
-    WiFi.mode(WIFI_STA);  // Needed for ESPNow
+  // Start SBUS
+  sbus_rx.Begin();
 
-    // WIFI STATION CODE and OTA not currently working
-  // #ifdef ENABLE_WIFI
-    // Setup Wifi and OTA updates
-    // WiFi.begin(ssid, password);
-    // //WiFi.begin();
-    // while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    //   Serial.println("Connection Failed! Rebooting...");
-    //   delay(5000);
-    //   ESP.restart();
-    // }
-
-  
-    // ArduinoOTA
-    //   .onStart([]() {
-    //     String type;
-    //     if (ArduinoOTA.getCommand() == U_FLASH)
-    //       type = "sketch";
-    //     else // U_SPIFFS
-    //       type = "filesystem";
-  
-    //     // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-    //     Serial.println("Start updating " + type);
-    //   })
-    //   .onEnd([]() {
-    //     Serial.println("\nEnd");
-    //   })
-    //   .onProgress([](unsigned int progress, unsigned int total) {
-    //     Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    //   })
-    //   .onError([](ota_error_t error) {
-    //     Serial.printf("Error[%u]: ", error);
-    //     if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    //     else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    //     else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    //     else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    //     else if (error == OTA_END_ERROR) Serial.println("End Failed");
-    //   });
-  
-    // ArduinoOTA.begin();
-  
-    // Serial.println("Ready");
-    // Serial.print("IP address: ");
-    // Serial.println(WiFi.localIP());
-    // Serial.println(WiFi.macAddress());
-  //#endif
-  
-  // Sound
-  #ifdef AUDIO_ENABLED
-    Serial1.begin(9600, SERIAL_8N1, 18, 19);
-    myDFPlayer.begin(Serial1);
-    myDFPlayer.volume(30);
-    delay (1000);
-    myDFPlayer.play(12);
-    Serial.println("Audio Started");
-  #endif
-
-
-  if (esp_now_init() != 0) {
-    Serial.println("Problem during ESP-NOW init");
-    return;
+  // Start DFPlayer
+  DFPlayerSerial.begin(9600, SERIAL_8N1, DFPLAYER_TX_PIN, DFPLAYER_RX_PIN);
+  if (myDFPlayer.begin(DFPlayerSerial)) {
+    Serial.println("DFPlayer Mini online.");
+    myDFPlayer.volume(15); // Default volume, will be overwritten by RC
+  } else {
+    Serial.println("Connecting to DFPlayer Mini... failed.");
   }
 
-  // Register peer
-  memcpy(peerDome.peer_addr, dome_mac, 6);
-  peerDome.channel = 0;  
-  peerDome.encrypt = false;
+  // Setup Maestro Serial
+  setupMaestro();
 
-  
-  // Add peer        
-  if (esp_now_add_peer(&peerDome) != ESP_OK){
-    Serial.println("**** Failed to add Dome");
-    return;
-  }
+  // Setup WiFi
+  setupWifi();
 
-  currentDomeMessage.psi = false;
-  currentDomeMessage.effect = 1; // Set connection annimation
-  esp_err_t result = esp_now_send(NULL, (uint8_t *) &currentDomeMessage, sizeof(currentDomeMessage));
-  if (result == ESP_OK) {
-    Serial.println("Initial Sent with success");
-  }
-  else {
-    Serial.println("Error sending initial data");
-  }
+  // Setup ESP-Now
+  setupEspNow();
+
+  // Setup IMU
+  setupIMU();
   
+  // Start the web server
+  setupWebServer();
+
   Serial.println("Startup complete!");
 }
 
 void loop() {
+  // Read SBUS data
+  if (sbus_rx.Read()) {
+    data = sbus_rx.data();
 
-  if (sbus_rx.Read())
-  {
-  // 15 Button Toggle  
-  toggle_pad(); 
-  //play_sound(); 
-  check_sound();
-      data = sbus_rx.data();
-    /* Display the received data */
-    //  Serial.print(data.ch[CH_Button_Pad]);
-    //  Serial.print("\t");
-         
-      // Plays random sounds or dome movements for automations when in automation mode
-      if(isInAutomationMode){
-        triggerAutomation();
-        }
+    // Toggle Automation Mode
+    toggle_automation();
+    
+    // Toggle WiFi
+    toggle_wifi();
+
+    // Toggle Button Pad Page
+    toggle_pad();
+
+    // Check for button presses and play sounds/actions
+    check_sound();
+
+    // Set volume from RC potentiometer
+    set_volume_from_rc();
+    
+    // If in automation mode, run automation logic
+    if (isInAutomationMode) {
+      triggerAutomation();
+    }
   }
 
-if ((millis() - soundMillis) > 25)     
-{    
-  if (digitalRead(AUDIO_BUSY_PIN) == LOW)
-	{   //Check to see if audio is playing
-       int soundLevel = analogRead(AUDIO_OUTPUT_PIN);
-	  Serial.println(soundLevel);
-	  if (soundLevel > 3600)
-	    {
-	     currentDomeMessage.psi = 1;
-	     //Serial.println("PSI High"); 
-	    }
-	  else if (soundLevel < 3600)
-	    {
-	     currentDomeMessage.psi = 0;
-	     //Serial.println("PSI Low"); 
-	    }
-	}
-	else if (digitalRead(AUDIO_BUSY_PIN) == HIGH)
-	   {
-	    currentDomeMessage.psi = 0; 
-	    Serial.println("PSI off"); 
-	   }    
-        
-  send_dome_message();
-soundMillis = millis();
-  }   
+  // Handle WiFi connection logic (reconnecting if STA mode)
+  if (config.wifiMode == 1 && wifiEnabled) { // If in STA mode and WiFi is on
+      handleWifiReconnect();
+  }
+  
+  // Read IMU data periodically
+  readIMU();
 
-  // //hub.handle();
-
-
-  // #ifdef ENABLE_WIFI
-  //   ArduinoOTA.handle();
-  // #endif
-
+  // ESP-Now dome message and sound level check
+  if ((millis() - soundMillis) > 25) {
+    if (digitalRead(AUDIO_BUSY_PIN) == LOW) {
+      int soundLevel = analogRead(AUDIO_OUTPUT_PIN);
+      // Serial.println(soundLevel);
+      if (soundLevel > 3600) {
+        currentDomeMessage.psi = 1;
+      } else {
+        currentDomeMessage.psi = 0;
+      }
+    } else {
+      currentDomeMessage.psi = 0;
+    }
+    send_dome_message();
+    soundMillis = millis();
+  }
 }
 
 
+// --- RC Toggle Functions ---
+
+void toggle_automation() {
+  if (config._automationToggleCH > 0) {
+    bool newState = sbus_rx.data().ch[config._automationToggleCH - 1] > RC_MID;
+    if (newState != automationToggleState) {
+      automationToggleState = newState;
+      if (automationToggleState) { // Only trigger on the rising edge of the switch flip
+        isInAutomationMode = !isInAutomationMode;
+        Serial.print("Automation Mode Toggled: ");
+        Serial.println(isInAutomationMode ? "ON" : "OFF");
+
+        // Send state change serial command
+        if (config.enableSerial) {
+          if (isInAutomationMode && strlen(config.automation.serialCommandOn) > 0) {
+            Serial.println(config.automation.serialCommandOn);
+          } else if (!isInAutomationMode && strlen(config.automation.serialCommandOff) > 0) {
+            Serial.println(config.automation.serialCommandOff);
+          }
+        }
+      }
+    }
+  }
+}
+
+void toggle_wifi() {
+    if (config._wifiToggleCH > 0) {
+        bool newState = sbus_rx.data().ch[config._wifiToggleCH - 1] > RC_MID;
+        if (newState != wifiToggleState) {
+            wifiToggleState = newState;
+            if (wifiToggleState) { // Only trigger on rising edge
+                wifiEnabled = !wifiEnabled;
+                if (wifiEnabled) {
+                    Serial.println("WiFi turned ON via RC. Re-initializing...");
+                    setupWifi();
+                } else {
+                    Serial.println("WiFi turned OFF via RC.");
+                    WiFi.mode(WIFI_OFF);
+                }
+            }
+        }
+    }
+}
+
+void set_volume_from_rc() {
+    if (config._volumeCH > 0) {
+        int vol_channel = config._volumeCH - 1;
+        // Map the SBUS value (174-1815) to the DFPlayer volume range (0-30)
+        int volume = map(sbus_rx.data().ch[vol_channel], RC_MIN, RC_MAX, 0, 30);
+        myDFPlayer.volume(volume);
+    }
+}
 

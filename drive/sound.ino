@@ -1,471 +1,166 @@
-int soundTriggerState = 0;
-int soundTriggerState1 = 0;
-int soundTriggerState2 = 0;
-int soundTriggerState3 = 0;
-int soundTriggerState4 = 0;
-int soundTriggerStateauto = 0;
+// This variable holds which pad page is active (1 or 2)
 int Pad = 1;
 
+// These are state-tracking variables to prevent a button from being held down and firing continuously.
+// A sound can only play again once the switch has been returned to its middle/resting position.
+int soundTriggerState1 = 0; // For RC Buttons 1/2
+int soundTriggerState2 = 0; // For RC Buttons 3/4
+int soundTriggerState3 = 0; // For RC Buttons 5/6
+int soundTriggerState4 = 0; // For the 15-button Pad
 
+// --- HELPER FUNCTIONS ---
 
-void check_sound()
- {
-  if     
-   ((soundTriggerState1 == 0) && (soundTriggerState2 == 0) && (soundTriggerState3 == 0) && (soundTriggerState4 == 0))
-   //Allow sound to play
-   {
-   play_sound(); 
-   //Serial.println("Trigger is open"); 
-  }  
-//Reset triggers so sound will work again
- else if  
- //Reset SwitchA
-    (soundTriggerState1 == 1)    
-     {  
-      // Serial.println("Checking status");
-       if ((sbus_rx.data().ch[CH_Buttons_1_2]) == RC_MID)
-       {
-          //soundTriggerState = 0;  
-          soundTriggerState1 = 0;
-          Serial.println("Trigger1 reopened");       
-       }
-     } 
-  else if  
-  //Reset SwitchB
-    (soundTriggerState2 == 1)    
-     {  
-       //Serial.println("Checking status");
-       if ((sbus_rx.data().ch[CH_Buttons_3_4]) == RC_MID)
-       {
-          //soundTriggerState = 0;  
-          soundTriggerState2 = 0;
-          Serial.println("Trigger2 reopened");       
-       }
-     }   
-     
-  else if  
-  //Reset SwitchC
-    (soundTriggerState3 == 1)    
-     {  
-      // Serial.println("Checking status");
-       if ((sbus_rx.data().ch[CH_Buttons_5_6]) == RC_MID)
-       {
-          //soundTriggerState = 0;  
-          soundTriggerState3 = 0;
-          Serial.println("Trigger3 reopened");       
-       }
-     }   
+// Helper function to process an action (sound, maestro, serial)
+// This avoids repeating the same block of code for every single button.
+void processAction(const ButtonAction& action) {
+  // 1. Play Sound
+  // Check if a sound is configured (min value is not 0)
+  if (action.soundMin > 0) {
+    if (action.soundMax > action.soundMin) {
+      // If min and max are different, play a random sound in that range
+      myDFPlayer.play(random(action.soundMin, action.soundMax + 1));
+    } else {
+      // If min and max are the same, play that single sound file
+      myDFPlayer.play(action.soundMin);
+    }
+  }
 
-  else if  
-  //Reset Button pad
-    (soundTriggerState4 == 1)  
-     {  
-      // Serial.println("Checking status");
-       if ((sbus_rx.data().ch[CH_Button_Pad]) == Resting)
-       {
-          //soundTriggerState = 0;  
-          soundTriggerState4 = 0;
-          Serial.println("Trigger pad reopened");       
-       }
-     }      
-}  
+  // 2. Trigger Maestro Scripts
+  // Check if Maestros are enabled in config and a script number is set (not 0)
+  if (config._maestroCount >= 1 && action.maestro1Script > 0) {
+    runMaestroScript(0, action.maestro1Script); // Target Maestro #1 (device 0)
+  }
+  if (config._maestroCount >= 2 && action.maestro2Script > 0) {
+    runMaestroScript(1, action.maestro2Script); // Target Maestro #2 (device 1)
+  }
 
-void toggle_pad()
-{
-  if 
-    (sbus_rx.data().ch[CH_Button_Toggle] == RC_MAX)
-      {
-        Pad = 2;
-       // Serial.println("Button pad 2 selected");
-      }    
-  else if 
-    (sbus_rx.data().ch[CH_Button_Toggle] == RC_MIN)
-      {
-        Pad = 1;
-      //  Serial.println("Button pad 1 selected");
-      } 
+  // 3. Send Serial Command
+  // Check if serial is enabled and the command string is not empty
+  if (config.enableSerial && strlen(action.serialCommand) > 0) {
+    // This prints to the main USB serial port for debugging.
+    // You would send this to another serial port for external devices.
+    Serial.print("Sending Serial Command: ");
+    Serial.println(action.serialCommand);
+  }
 }
 
+// --- MAIN SOUND AND ACTION LOGIC ---
 
-void play_sound()
-{
-  if (sbus_rx.data().ch[CH_Buttons_1_2] == RC_MIN)
-  //SwitchA
-  {
-    myDFPlayer.play(random(10,12));
-    Serial.println("Button 1");
-    //soundTriggerState = 1;
-    Serial.println("Trigger 1 closed");
-    soundTriggerState1 = 1;
-   }
-  else if 
-    (sbus_rx.data().ch[CH_Buttons_1_2] == RC_MAX)
-    //SwitchA 
-    {    
-    myDFPlayer.play(random(20, 22));
-    Serial.println("Button 2");
-    //soundTriggerState = 1;
-    Serial.println("Trigger 2 closed");
-    soundTriggerState1 = 1;
-    }              
-  else if 
-    (sbus_rx.data().ch[CH_Buttons_3_4] == RC_MIN)
-    //SwitchB 
-    {
-      myDFPlayer.play(random(5,7));
-      Serial.println("Button 3");
-      //soundTriggerState = 1;
-      Serial.println("Trigger 3 closed");
+// This function checks the RC switches and the button pad
+void play_sound() {
+
+  // --- RC Buttons ---
+  // Each block checks a 3-position switch (LOW, MID, HIGH)
+
+  // Check RC Buttons 1 & 2 on their assigned channel
+  if (soundTriggerState1 == 0 && config._rcButtons12CH > 0) {
+    int channel = config._rcButtons12CH - 1;
+    if (sbus_rx.data().ch[channel] < RC_DEADBAND_LOW) { // Switch is LOW
+      processAction(config.actions_rc[0]); // Process action for RC Button 1
+      soundTriggerState1 = 1; // Set trigger so it won't fire again until centered
+    } else if (sbus_rx.data().ch[channel] > RC_DEADBAND_HIGH) { // Switch is HIGH
+      processAction(config.actions_rc[1]); // Process action for RC Button 2
+      soundTriggerState1 = 1;
+    }
+  }
+
+  // Check RC Buttons 3 & 4
+  if (soundTriggerState2 == 0 && config._rcButtons34CH > 0) {
+    int channel = config._rcButtons34CH - 1;
+    if (sbus_rx.data().ch[channel] < RC_DEADBAND_LOW) {
+      processAction(config.actions_rc[2]);
+      soundTriggerState2 = 1;
+    } else if (sbus_rx.data().ch[channel] > RC_DEADBAND_HIGH) {
+      processAction(config.actions_rc[3]);
       soundTriggerState2 = 1;
     }
-  else if 
-    (sbus_rx.data().ch[CH_Buttons_3_4] == RC_MAX)
-    //SwitchB
-    {
-      myDFPlayer.play(random(1, 4));
-      Serial.println("Button 4");
-      //soundTriggerState = 1;
-      Serial.println("Trigger 4 closed");
-      soundTriggerState2 = 1;
-    }              
-  else if
-    (sbus_rx.data().ch[CH_Buttons_5_6] == RC_MIN)
-    //SwitchB    
-     {
-        myDFPlayer.play(random(16, 19));
-        Serial.println("Button 5");
-        //soundTriggerState = 1;
-        Serial.println("Trigger 5 closed");
-        soundTriggerState3 = 1;
-      }
-  else if 
-    (sbus_rx.data().ch[CH_Buttons_5_6] == RC_MAX) 
-    //SwitchC
-      {
-        myDFPlayer.play(random(23, 25));
-        Serial.println("Button 6");
-        //soundTriggerState = 1;
-        Serial.println("Trigger 6 closed");
-        soundTriggerState3 = 1;
-      }  
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button1)
-      {    
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(2, 4));
-        Serial.println("Pad 1-1");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-1 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(4, 6));
-        Serial.println("Pad 2-1");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-1 closed");
-        soundTriggerState4 = 1;
-      } 
-     }         
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button2)
-    {    
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(6, 8));
-        Serial.println("Pad 1-2");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-2 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(8, 10));
-        Serial.println("Pad 2-2");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-2 closed");
-        soundTriggerState4 = 1;
-      }
-    }       
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button3)
-    {
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(10, 12));
-        Serial.println("Pad 1-3");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-3 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(12, 14));
-        Serial.println("Pad 2-3");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-3 closed");
-        soundTriggerState4 = 1;
-      }   
-    }  
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button4)
-    {
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(14, 16));
-        Serial.println("Pad 1-4");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-4 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(16, 18));
-        Serial.println("Pad 2-4");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-4 closed");
-        soundTriggerState4 = 1;
-      }
-    } 
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button5)
-    {
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(18, 20));
-        Serial.println("Pad 1-5");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-5 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(20, 22));
-        Serial.println("Pad 2-5");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-5 closed");
-        soundTriggerState4 = 1;
-      }
-    } 
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button6)
-    {
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(6, 8));
-        Serial.println("Pad 1-6");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-6 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(8, 10));
-        Serial.println("Pad 2-6");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-6 closed");
-        soundTriggerState4 = 1;
+  }
+
+  // Check RC Buttons 5 & 6
+  if (soundTriggerState3 == 0 && config._rcButtons56CH > 0) {
+    int channel = config._rcButtons56CH - 1;
+    if (sbus_rx.data().ch[channel] < RC_DEADBAND_LOW) {
+      processAction(config.actions_rc[4]);
+      soundTriggerState3 = 1;
+    } else if (sbus_rx.data().ch[channel] > RC_DEADBAND_HIGH) {
+      processAction(config.actions_rc[5]);
+      soundTriggerState3 = 1;
+    }
+  }
+
+  // --- 15 Button Pad ---
+  if (soundTriggerState4 == 0 && config._buttonsCH > 0 && config.numButtons > 0) {
+    int pad_channel = config._buttonsCH - 1;
+    
+    // Check if the button pad is sending a value (i.e., not in its resting state)
+    if (sbus_rx.data().ch[pad_channel] != Resting) {
+      
+      // Loop through the number of configured physical buttons
+      for (int i = 0; i < config.numButtons; i++) {
+        
+        // Check if the live SBUS value matches the saved value for this button
+        if (sbus_rx.data().ch[pad_channel] == config.pwmButtonValues[i]) {
+
+          // Check if this button is the designated STOP ALL button
+          if ((i + 1) == config.stopAllButton && config.stopAllButton > 0) {
+              Serial.println("STOP ALL Triggered!");
+              myDFPlayer.stop();
+              stopAllMaestros();
+          } else {
+            // It's a regular button, so process its action based on which Pad page is active
+            if (Pad == 1) {
+              processAction(config.actions_p1[i]);
+            } else { // Pad == 2
+              processAction(config.actions_p2[i]);
+            }
+          }
+          
+          soundTriggerState4 = 1; // Set trigger so it won't fire again until released
+          break; // Exit the loop because we found the pressed button.
+        }
       }
     }
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button7)
-    {
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(6, 8));
-        Serial.println("Pad 1-7");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-7 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(8, 10));
-        Serial.println("Pad 2-7");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-7 closed");
-        soundTriggerState4 = 1;
+  }
+}
+
+// This function checks if the triggers can be reset, allowing another sound/action.
+void check_sound() {
+  if (soundTriggerState1 == 0 && soundTriggerState2 == 0 && soundTriggerState3 == 0 && soundTriggerState4 == 0) {
+    // All triggers are open, so we can check for new button presses.
+    play_sound();
+  } else {
+    // One or more triggers are closed, check if they can be re-opened.
+    if (soundTriggerState1 == 1 && config._rcButtons12CH > 0) {
+      if (sbus_rx.data().ch[config._rcButtons12CH - 1] > RC_DEADBAND_LOW && sbus_rx.data().ch[config._rcButtons12CH - 1] < RC_DEADBAND_HIGH) {
+        soundTriggerState1 = 0; // Switch is in the middle, re-open the trigger.
       }
-    } 
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button8)
-     {
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(6, 8));
-        Serial.println("Pad 1-8");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-8 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(8, 10));
-        Serial.println("Pad 2-8");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-8 closed");
-        soundTriggerState4 = 1;
+    }
+    if (soundTriggerState2 == 1 && config._rcButtons34CH > 0) {
+      if (sbus_rx.data().ch[config._rcButtons34CH - 1] > RC_DEADBAND_LOW && sbus_rx.data().ch[config._rcButtons34CH - 1] < RC_DEADBAND_HIGH) {
+        soundTriggerState2 = 0;
       }
-     }  
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button9)
-    {
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(6, 8));
-        Serial.println("Pad 1-9");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-9 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(8, 10));
-        Serial.println("Pad 2-9");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-9 closed");
-        soundTriggerState4 = 1;
+    }
+    if (soundTriggerState3 == 1 && config._rcButtons56CH > 0) {
+      if (sbus_rx.data().ch[config._rcButtons56CH - 1] > RC_DEADBAND_LOW && sbus_rx.data().ch[config._rcButtons56CH - 1] < RC_DEADBAND_HIGH) {
+        soundTriggerState3 = 0;
       }
-    }        
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button10)
-    { 
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(6, 8));
-        Serial.println("Pad 1-10");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-10 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(8, 10));
-        Serial.println("Pad 2-10");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-10 closed");
-        soundTriggerState4 = 1;
+    }
+    if (soundTriggerState4 == 1 && config._buttonsCH > 0) {
+      if (sbus_rx.data().ch[config._buttonsCH - 1] == Resting) {
+        soundTriggerState4 = 0; // 15-button pad is in its resting state, re-open the trigger.
       }
-    }  
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button11)
-     {
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(6, 8));
-        Serial.println("Pad 1-11");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-11 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(8, 10));
-        Serial.println("Pad 2-11");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-11 closed");
-        soundTriggerState4 = 1;
-      }
-     }   
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button12)
-     { 
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(6, 8));
-        Serial.println("Pad 1-12");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-12 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(8, 10));
-        Serial.println("Pad 2-12");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-12 closed");
-        soundTriggerState4 = 1;
-      }
-     } 
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button13)
-    {
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(6, 8));
-        Serial.println("Pad 1-13");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-13 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(8, 10));
-        Serial.println("Pad 2-13");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-13 closed");
-        soundTriggerState4 = 1;
-      }
-    } 
-    //Automation mode
-  else if  
-    (sbus_rx.data().ch[CH_Button_Pad] == Button14)
-     {
-      if (Pad == 1)
-      {
-        if(isInAutomationMode){
-          isInAutomationMode = false;
-          automateAction = 0;
-          Serial.println("Pad 1-14");
-         //soundTriggerState = 1;
-          Serial.println("Trigger Automation off");
-          soundTriggerState4= 1;
-          myDFPlayer.play(8);
-          } else {
-              isInAutomationMode = true;
-              myDFPlayer.play(9);
-              Serial.println("Trigger Automation on");
-             soundTriggerState4= 1;
-          }
-      } 
-      else if (Pad == 2)  
-      {
-        if(isInAutomationMode){
-          isInAutomationMode = false;
-          automateAction = 0;
-          Serial.println("Pad 2-14");
-          //soundTriggerState = 1;
-          Serial.println("Trigger Automation off");
-          soundTriggerState4 = 1;
-          myDFPlayer.play(8);
-          } else {
-              isInAutomationMode = true;
-              myDFPlayer.play(9);
-              Serial.println("Trigger Automation on");
-              soundTriggerState4= 1;
-          }
-      }
-     }   
-  else if  
-    // This will eventually be a cut off/reset button
-    (sbus_rx.data().ch[CH_Button_Pad] == Button15)
-     { 
-      if (Pad == 1)
-      {
-        myDFPlayer.play(random(6, 8));
-        Serial.println("Pad 1-15");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 1-15 closed");
-        soundTriggerState4 = 1;
-      } 
-      else if (Pad == 2)  
-      {
-        myDFPlayer.play(random(8, 10));
-        Serial.println("Pad 2-15");
-        //soundTriggerState = 1;
-        Serial.println("Trigger Pad 2-15 closed");
-        soundTriggerState4 = 1;
-      }
-     }                                             
-}  
+    }
+  }
+}
+
+// Toggles between Pad 1 and Pad 2 actions
+void toggle_pad() {
+  if (config._ToggleCH > 0) {
+    if (sbus_rx.data().ch[config._ToggleCH - 1] < RC_MID) {
+      Pad = 1;
+    } else {
+      Pad = 2;
+    }
+  }
+}
+
