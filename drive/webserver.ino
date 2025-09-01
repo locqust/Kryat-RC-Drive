@@ -327,7 +327,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 </head>
 <body class="bg-black text-white p-4 sm:p-6">
     <div class="container max-w-6xl mx-auto">
-        <h2 class="text-2xl font-bold text-center bg-gray-700 p-3 rounded-md mb-4">Krayt Controls V1.2.3</h2>
+        <h2 class="text-2xl font-bold text-center bg-gray-700 p-3 rounded-md mb-4">Krayt Balancing Droid Control System V0.1</h2>
         
         <div id="main-nav" class="nav flex flex-wrap justify-center gap-2 mb-4">
             <a href="#general" class="nav-link bg-gray-600 px-4 py-2 rounded-md" onclick="showPage('general')">General</a>
