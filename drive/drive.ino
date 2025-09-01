@@ -1,7 +1,26 @@
 /**
-   Krayt Drive
    OpenSource FrSky SBUs RC control board for Astromechs
-   This is a collaborative project developed with Google's Gemini.
+   Authors:
+      Patrick Ryan <pat.m.ryan@gmail.com> - @circuitBurn
+      Darren Poulson <darren.poulson@gmail.com> - Fediverse: dpoulson@fr.droidbuilders.uk
+      Andrew Smith <locqust@gmail.com> 
+    This is a heavily modified version of the Joe's drive FrSky SBUS RC control made by Darren, stripped 
+    down and rebuilt for a Hamster Drive.
+    I've also taken advantage of the fact I have a Kyber 15 button board on my TX so I have written the code to utliise that in a similar way to Kyber.
+    This also takes ideas and parts of Padawan 360, originally made by Dan Kraus and customised by Steve Baudains of Imperial Light and Magic. I.e Meastro control, 
+    I2C, Dome and sound automation etc. As well as other add-ons that I made to my own Padawan 360 for R2-D2. 
+    Effectively I'm trying to get the best of both worlds of RC and Padawan while keeping it simple and open to others to play around with.
+
+   Serial Ports:
+      Serial1 - DFPlayer Mini
+      Serial2 - SBUS RC
+
+   Resources:
+      https://github.com/circuitBurn/BB-8
+      https://github.com/dpoulson/bb8_rc_control
+      https://bb8builders.club/
+      https://www.facebook.com/groups/863379917081398
+      https://github.com/Imperiallandm/padawan_360_mega_maestro
 */
 #include "sbus.h"
 #include <DFRobotDFPlayerMini.h>
