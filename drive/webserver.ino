@@ -33,6 +33,7 @@ void parseButtonAction(AsyncWebServerRequest *request, ButtonAction& action, int
 
 
 void setupWebServer() {
+    // --- Page and Data Routes ---
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
         request->send_P(200, "text/html", index_html);
     });
@@ -121,6 +122,38 @@ void setupWebServer() {
         serializeJson(doc, json);
         request->send(200, "application/json", json);
     });
+
+    // --- NEW: Export and Import Routes ---
+    server.on("/export-config", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(SPIFFS, "/config.json", "application/json", true);
+    });
+
+    server.on("/import-config", HTTP_POST, 
+        // Success response handler
+        [](AsyncWebServerRequest *request){
+            request->send(200, "text/plain", "Configuration Uploaded. Rebooting...");
+            delay(1000);
+            ESP.restart();
+        }, 
+        // File upload handler
+        [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+            if(!index){
+                // Open the file on first chunk of data
+                request->_tempFile = SPIFFS.open("/config.json", "w");
+                Serial.printf("Upload Start: %s\n", filename.c_str());
+            }
+            if(len){
+                // Write the chunk to the file
+                request->_tempFile.write(data, len);
+            }
+            if(final){
+                // Close the file on the last chunk
+                request->_tempFile.close();
+                Serial.printf("Upload End: %s, %u bytes\n", filename.c_str(), index+len);
+            }
+        }
+    );
+
 
     // --- SAVE ENDPOINTS ---
     server.on("/save-general", HTTP_POST, [](AsyncWebServerRequest *request){
@@ -234,6 +267,8 @@ const char index_html[] PROGMEM = R"rawliteral(
             --color-blue-500: #3b82f6;
             --color-blue-600: #2563eb;
             --color-blue-700: #1d4ed8;
+            --color-green-500: #22c55e;
+            --color-green-600: #16a34a;
             --color-steel-blue: steelblue;
         }
         *, ::before, ::after { box-sizing: border-box; border-width: 0; border-style: solid; border-color: #e5e7eb; }
@@ -264,6 +299,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         .rounded { border-radius: 0.25rem; } .rounded-md { border-radius: 0.375rem; } .rounded-lg { border-radius: 0.5rem; }
         .bg-gray-600 { background-color: var(--color-gray-600); } .bg-gray-700 { background-color: var(--color-gray-700); } .bg-gray-800 { background-color: var(--color-gray-800); } .bg-gray-900 { background-color: var(--color-gray-900); }
         .bg-blue-600 { background-color: var(--color-blue-600); } .hover\:bg-blue-700:hover { background-color: var(--color-blue-700); }
+        .bg-green-500 { background-color: var(--color-green-500); } .hover\:bg-green-600:hover { background-color: var(--color-green-600); }
         .text-center { text-align: center; }
         .text-sm { font-size: 0.875rem; line-height: 1.25rem; } .text-lg { font-size: 1.125rem; line-height: 1.75rem; } .text-xl { font-size: 1.25rem; line-height: 1.75rem; } .text-2xl { font-size: 1.5rem; line-height: 2rem; } .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
         .font-bold { font-weight: 700; } .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; } .font-semibold { font-weight: 600; }
@@ -271,7 +307,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         .cursor-pointer { cursor: pointer; } .cursor-not-allowed { cursor: not-allowed; }
         .block { display: block; }
         input, select, button { font-family: inherit; font-size: 100%; margin: 0; padding: 0; line-height: inherit; color: inherit; }
-        button { text-transform: none; background-color: transparent; background-image: none; cursor: pointer; }
+        button, a { text-transform: none; background-color: transparent; background-image: none; cursor: pointer; text-decoration: none;}
         input[type="radio"], input[type="checkbox"] { -webkit-appearance: none; -moz-appearance: none; appearance: none; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; display: inline-block; vertical-align: middle; background-origin: border-box; -webkit-user-select: none; -moz-user-select: none; user-select: none; flex-shrink: 0; height: 1rem; width: 1rem; color: var(--color-blue-500); background-color: #fff; border-color: #6b7280; border-width: 1px; }
         input[type="radio"] { border-radius: 100%; }
         input[type="checkbox"] { border-radius: 0.25rem; }
@@ -295,6 +331,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         
         <div id="main-nav" class="nav flex flex-wrap justify-center gap-2 mb-4">
             <a href="#general" class="nav-link bg-gray-600 px-4 py-2 rounded-md" onclick="showPage('general')">General</a>
+            <a href="#system" class="nav-link bg-gray-600 px-4 py-2 rounded-md" onclick="showPage('system')">System</a>
             <a href="#wifi" class="nav-link bg-gray-600 px-4 py-2 rounded-md" onclick="showPage('wifi')">Wifi</a>
             <a href="#pid" class="nav-link bg-gray-600 px-4 py-2 rounded-md" onclick="showPage('pid')">PID</a>
             <a href="#automation" class="nav-link bg-gray-600 px-4 py-2 rounded-md" onclick="showPage('automation')">Automation</a>
@@ -345,6 +382,29 @@ const char index_html[] PROGMEM = R"rawliteral(
                     </div>
                     <div class="text-center mt-6"><button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">Save & Reboot</button></div>
                 </form>
+            </div>
+
+             <!-- System Page -->
+            <div id="system" class="page" style="display:none;">
+                <div class="form-card p-6 rounded-lg max-w-xl mx-auto">
+                    <h3 class="font-bold text-xl text-blue-400 mb-4 text-center">System Configuration</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-gray-800 p-4 rounded-lg text-center">
+                            <h4 class="font-semibold text-lg mb-2">Export</h4>
+                            <p class="text-sm text-gray-400 mb-4">Download the current configuration as a JSON file to create a backup.</p>
+                            <a href="/export-config" download="krayt_config.json" class="inline-block bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg">Export</a>
+                        </div>
+                        <div class="bg-gray-800 p-4 rounded-lg text-center">
+                            <h4 class="font-semibold text-lg mb-2">Import</h4>
+                            <p class="text-sm text-gray-400 mb-4">Upload a saved JSON file to restore a previous configuration.</p>
+                            <form id="form-import" method="POST" action="/import-config" enctype="multipart/form-data">
+                                <input type="file" name="configfile" id="configfile" class="hidden" onchange="document.getElementById('upload-btn').style.display='inline-block'">
+                                <label for="configfile" class="inline-block bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg cursor-pointer">Choose File</label>
+                                <button type="submit" id="upload-btn" class="hidden mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">Upload & Reboot</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- WiFi Page -->
@@ -404,7 +464,6 @@ const char index_html[] PROGMEM = R"rawliteral(
                             </div>
                         </div>
 
-                        <!-- NEW IMU SECTION -->
                         <div class="bg-gray-800 p-4 rounded-lg">
                             <h3 class="font-bold text-lg text-blue-400 mb-2">Live IMU Data</h3>
                             <div class="grid grid-cols-2 gap-4 font-mono text-center">
@@ -544,8 +603,8 @@ function showPage(pageId) {
     if (pageId === 'pwm') startSbusFetching();
     else stopSbusFetching();
 
-    if (pageId === 'pid') startImuFetching(); // Start IMU on PID page
-    else stopImuFetching(); // Stop it on all other pages
+    if (pageId === 'pid') startImuFetching(); 
+    else stopImuFetching(); 
 }
 
 function startSbusFetching() {
@@ -568,7 +627,6 @@ function stopSbusFetching() {
     sbusInterval = null;
 }
 
-// New functions for IMU
 function startImuFetching() {
     if (imuInterval) return;
     imuInterval = setInterval(() => {
@@ -585,7 +643,7 @@ function startImuFetching() {
                 console.error("IMU fetch error:", err);
                 stopImuFetching();
             });
-    }, 250); // Fetch IMU data a bit less frequently
+    }, 250); 
 }
 
 function stopImuFetching() {
@@ -604,6 +662,7 @@ window.onload = function() {
         showPage(pageId); 
     }).catch(err => console.error("Error fetching config:", err));
 
+    // Normal form saves
     document.getElementById('form-general').addEventListener('submit', e => saveForm(e, '/save-general'));
     document.getElementById('form-wifi').addEventListener('submit', e => saveForm(e, '/save-wifi'));
     document.getElementById('form-pid').addEventListener('submit', e => saveForm(e, '/save-pid'));
@@ -612,6 +671,32 @@ window.onload = function() {
     document.getElementById('form-buttons-rc').addEventListener('submit', e => saveForm(e, '/save-buttons-rc'));
     document.getElementById('form-buttons1').addEventListener('submit', e => saveForm(e, '/save-buttons1'));
     document.getElementById('form-buttons2').addEventListener('submit', e => saveForm(e, '/save-buttons2'));
+
+    // Special handler for import form to give user feedback
+    document.getElementById('form-import').addEventListener('submit', function(event) {
+        event.preventDefault();
+        const formData = new FormData(this);
+        const fileInput = document.getElementById('configfile');
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            alert('Please choose a file to upload.');
+            return;
+        }
+
+        fetch('/import-config', {
+            method: 'POST',
+            body: formData,
+        })
+        .then(response => response.text())
+        .then(result => {
+            alert(result); // Show "Rebooting..." message from server
+            // The server will reboot, so no further action is needed here.
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Upload failed!');
+        });
+    });
 };
 
 function updateNav() {
