@@ -30,6 +30,7 @@
 #include "config.h"
 #include "constants.h"
 #include "enums.h"
+#include "Arduino.h"
 
 // --- Function Prototypes ---
 // from filesystem.ino
@@ -58,7 +59,7 @@ DFRobotDFPlayerMini myDFPlayer;
 
 // --- SBUS RC Control ---
 // SBUS connected to GPIO 16 (RX2)
-bfs::SbusRx sbus_rx(&Serial2);
+bfs::SbusRx sbus_rx(&Serial2, 16, 16, false);
 bfs::SbusData data;
 
 // --- Global State ---
@@ -221,4 +222,3 @@ void set_volume_from_rc() {
         myDFPlayer.volume(volume);
     }
 }
-
