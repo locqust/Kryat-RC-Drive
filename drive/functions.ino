@@ -28,7 +28,8 @@ void handleWifiReconnect() {
 
 // --- ESP-Now Functions ---
 // Callback when data is sent
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+// Corrected the function signature's first parameter to match the expected 'wifi_tx_info_t' type.
+void OnDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
   // This is where you would handle confirmation of sent messages.
   // For now, we can leave it blank or add a Serial print for debugging.
   // Serial.print("\r\nLast Packet Send Status:\t");
@@ -67,4 +68,3 @@ void send_dome_message() {
     //   Serial.println("Error sending ESP-Now data");
     // }
 }
-

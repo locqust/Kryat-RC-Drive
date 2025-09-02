@@ -26,6 +26,7 @@
 #include <DFRobotDFPlayerMini.h>
 #include <HardwareSerial.h>
 #include <WiFi.h>
+#include <ESPAsyncWebServer.h> // Added this include for the webserver functionality
 #include <esp_now.h>
 #include "config.h"
 #include "constants.h"
@@ -164,6 +165,8 @@ void loop() {
     } else {
       currentDomeMessage.psi = 0;
     }
+    // Initialize the 'effect' field to prevent sending garbage data
+    currentDomeMessage.effect = 0; 
     send_dome_message();
     soundMillis = millis();
   }
